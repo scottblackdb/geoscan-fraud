@@ -93,17 +93,6 @@ import folium
 from folium import plugins
 
 points = points_df.sample(0.1).toPandas()[['latitude', 'longitude']]
-nyc = folium.Map([40.75466940037548,-73.98365020751953], zoom_start=12, width='80%', height='100%')
-folium.TileLayer('Stamen Toner').add_to(nyc)
-nyc.add_child(plugins.HeatMap(points.to_numpy(), radius=12))
-nyc
-
-# COMMAND ----------
-
-import folium
-from folium import plugins
-
-points = points_df.sample(0.1).toPandas()[['latitude', 'longitude']]
 nyc = folium.Map(
     location=[40.75466940037548, -73.98365020751953], 
     zoom_start=12, 

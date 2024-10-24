@@ -90,7 +90,7 @@ anomalies = anomalous_transactions.filter(F.col('user') == user).toPandas()
 clusters = model_personalized.filter(F.col('user') == user).toPandas().cluster.iloc[0]
 
 personalized = folium.Map([40.75466940037548,-73.98365020751953], zoom_start=12, width='80%', height='100%')
-folium.TileLayer('Stamen Toner').add_to(personalized)
+folium.TileLayer('Stamen Toner', attr='Map tiles by Stamen Design, under CC BY 3.0. Data by OpenStreetMap, under ODbL.').add_to(personalized)
 
 for i, point in list(anomalies.iterrows())[0:5]:
   folium.Marker([point.latitude, point.longitude], popup=point.amount).add_to(personalized)
@@ -119,9 +119,9 @@ personalized
 
 # MAGIC %md
 # MAGIC The concept behind a bloom filter is to convert a series of records (in our case a H3 location) into a series of hash values, overlaying each of their byte arrays representations as vectors of 1 and 0. Testing the existence of a given record results in testing the existence of each of its bits set to 1. Given a record `w`, if any of its bit is not found in our set, we are 100% sure we haven't seen record `w` before. However, it all of its bits are found in our set, it could be caused by an unfortunate succession of hash collisions. In other words, Bloom filters offer a false negative rate of 0 but a non zero false positive rate (records we wrongly assume have been seen) that can controlled by the length of our array and the number of hash functions.
-# MAGIC 
+# MAGIC
 # MAGIC <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/Bloom_filter.svg/720px-Bloom_filter.svg.png">
-# MAGIC 
+# MAGIC
 # MAGIC [Source](https://en.wikipedia.org/wiki/Bloom_filter)
 
 # COMMAND ----------
@@ -277,9 +277,9 @@ display(anomalies)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC 
+# MAGIC
 # MAGIC Let's first create a new collection (i.e. a table) on mongodb and create an index with a [Time to Live](https://docs.mongodb.com/manual/tutorial/expire-data/) parameter (TTL). Besides the operation benefits not having to maintain this collection (records are purged after TTL expires) we can bring a temporal dimension to our model in order to cope with users changing patterns. With a TTL of e.g. 1 week and a new model trained every day, we can track clusters over time and dynamically adapt our fraud strategy as new transactions are being observed whilst keeping track of historical records
-# MAGIC 
+# MAGIC
 # MAGIC ```
 # MAGIC >> mongo
 # MAGIC >> use fraud
@@ -289,10 +289,10 @@ display(anomalies)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC 
+# MAGIC
 # MAGIC ```
 # MAGIC import com.mongodb.spark._
-# MAGIC 
+# MAGIC
 # MAGIC tiles
 # MAGIC   .withColumn("createdAt", current_timestamp())  
 # MAGIC   .write
@@ -307,7 +307,7 @@ display(anomalies)
 
 # MAGIC %md
 # MAGIC An online operation process could be monitoring new card transactions in real time by simply searching for specific H3 tiles of a given user via a simple mongo db search query
-# MAGIC 
+# MAGIC
 # MAGIC ```
 # MAGIC use fraud
 # MAGIC db.tiles.find({"user": "7f103b53-25b4-483d-81f2-e646d22930b2", "tile": "8A2A1008916FFFF"})
@@ -327,7 +327,7 @@ display(anomalies)
 
 # MAGIC %md
 # MAGIC ## Closing thoughts
-# MAGIC 
+# MAGIC
 # MAGIC Card fraud transactions will never be addressed by a one-size-fits-all model but should always make use of various indicators coming from different controls as part of an overhatching fraud prevention strategy. Often, this combines [AI models with a rule based systems](https://databricks.com/blog/2021/01/19/combining-rules-based-and-ai-models-to-combat-financial-fraud.html), integrates advanced technologies and legacy processes, cloud based infrastructures and on premises systems, and must comply with tight regulatory requirements and critical SLAs. Although our approach does not aim at identifying fraudulent transactions on its own, it strongly contributes at extracting anomalous events in an **timely**, **cost effective** (self maintained) and fully **explainable** manner, hence a great candidate to combat financial fraud more effectively in a coordinated rules + AI strategy.
-# MAGIC 
+# MAGIC
 # MAGIC As part of this exercise, we also discovered something equally important in financial services. We demonstrated the ability of a Lakehouse infrastructure to transition from traditional to personalized banking where consumers are no longer segmented by demographics (who they are) but by their spending patterns (how they bank), paving the way towards a more customer centric future of retail banking.
