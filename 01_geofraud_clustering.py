@@ -53,13 +53,17 @@
 
 # COMMAND ----------
 
-import pandas as pd
-from pyspark.sql import functions as F
-transactions = pd.read_csv('data/transactions.csv')
-transactions['latitude'] = transactions['latitude'].apply(lambda x: float(x))
-transactions['longitude'] = transactions['longitude'].apply(lambda x: float(x))
-transactions['amount'] = transactions['amount'].apply(lambda x: float(x))
-points_df = spark.createDataFrame(transactions)
+if spark.catalog.tableExists('transactions'):
+  import pandas as pd
+  from pyspark.sql import functions as F
+  transactions = pd.read_csv('data/transactions.csv')
+  transactions['latitude'] = transactions['latitude'].apply(lambda x: float(x))
+  transactions['longitude'] = transactions['longitude'].apply(lambda x: float(x))
+  transactions['amount'] = transactions['amount'].apply(lambda x: float(x))
+  points_df = spark.createDataFrame(transactions)
+else:
+  points_df = spark.table('transactions')
+  
 display(points_df)
 
 # COMMAND ----------
