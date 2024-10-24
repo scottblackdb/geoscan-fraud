@@ -1,4 +1,5 @@
 database:
+  catalog: solacc
   name: solacc_geoscan
   path: '/FileStore/solution_accelerators/geoscan/database'
   tables:

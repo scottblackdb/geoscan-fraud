@@ -14,17 +14,27 @@ with open('config/application.yaml', 'r') as f:
 
 # COMMAND ----------
 
-dbutils.fs.mkdirs(config['database']['path'])
-_ = sql("CREATE DATABASE IF NOT EXISTS {} LOCATION '{}'".format(
-  config['database']['name'], 
-  config['database']['path']
-))
 
-# COMMAND ----------
+if 'catalog' not in config['database']:
 
-# use our newly created database by default
-# each table will be created as a MANAGED table under this directory
-_ = sql("USE {}".format(config['database']['name']))
+  dbutils.fs.mkdirs(config['database']['path'])
+  _ = sql("CREATE DATABASE IF NOT EXISTS {} LOCATION '{}'".format(
+    config['database']['name'], 
+    config['database']['path']
+  ))
+
+  # use our newly created database by default
+  # each table will be created as a MANAGED table under this directory
+  _ = sql("USE {}".format(config['database']['name']))
+else:
+  ctlg = config['database']['catalog']
+  db = config['database']['name']
+  sql(f"CREATE CATALOG IF NOT EXISTS {ctlg}")
+  sql(f"USE CATALOG {ctlg}")
+
+  sql(f"CREATE DATABASE IF NOT EXISTS {db}")
+  sql(f"USE DATABASE {db}")
+  
 
 # COMMAND ----------
 

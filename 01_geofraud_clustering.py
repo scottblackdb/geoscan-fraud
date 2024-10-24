@@ -12,23 +12,23 @@
 
 # MAGIC %md
 # MAGIC ## Introducing GEOSCAN
-# MAGIC 
+# MAGIC
 # MAGIC As we could not find any viable solution that could scale to the millions of customers or to more than a few hundreds of thousands of records, we created our own open source library, [GEOSCAN](https://github.com/databrickslabs/geoscan), our implementation of DBSCAN algorithm for geospatial clustering at big data scale. Leveraging uber [H3](https://eng.uber.com/h3/) library to only group points we know are in close vicinity (according to H3 `precision`) and relying on [GraphX](https://spark.apache.org/docs/latest/graphx-programming-guide.html) API, this framework can detect dense areas at massive scale, understanding user shopping behaviours and detecting anomalous transactions in near real time. We will be using `folium` library to visualize our approach step by step as we move from a one size fits all model to a personalized clustering and anomaly detection. 
-# MAGIC 
+# MAGIC
 # MAGIC **Step1: Grouping**
-# MAGIC 
+# MAGIC
 # MAGIC The first step of GEOSCAN is to link each point to all its neighbours within an `epsilon` distance and remove points having less than `minPts` neighbours. Concretely, this means running a cartesian product - `O(n^2)` time complexity - of our dataset to filter out tuples that are more than `epsilon` meters away from one another. In our approach, we leverage H3 hexagons to only group points we know are close enough to be worth comparing. As reported in below picture, we first map a point to an H3 polygon and draw a circle of radius `epsilon` that we tile to at least 1 complete ring. Therefore, 2 points being at a distance of `epsilon` away would be sharing at least 1 polygon in common, so grouping by polygon would group points in close vicinity, ignoring 99.99% of the dataset. These pairs can then be further measured using a [haversine](https://en.wikipedia.org/wiki/Haversine_formula) distance.
-# MAGIC 
+# MAGIC
 # MAGIC <img src="https://github.com/databricks-industry-solutions/geoscan-fraud/raw/main/images/geoscan_algorithm.png" width=800>
-# MAGIC 
+# MAGIC
 # MAGIC Even though the theoretical time complexity remains the same - `O(n^2)` - we did not have to run an expensive (and non realistic) cartesian product of our entire dataframe. The real time complexity is `O(p.k^2)` where `p` groups are processed in parallel, running cartesian product of `k` points (`k << n`) sharing a same H3 hexagon, hence scaling massively. This isn't magic though, and prone to failure when data is heavily skewed in dense area (we recommend sampling data in specific areas as reported later). 
 # MAGIC  
 # MAGIC **Step2: Clustering**
-# MAGIC 
+# MAGIC
 # MAGIC The second step is trivial when using a graph paradigm. As we found vertices being no more than `epsilon` meters away (edge contains distance), we simply remove vertices with less than `minPts` connections (`degrees < minPts`). By removing these border nodes, clusters start to form and can be retrieved via a `connectedComponents`. 
-# MAGIC 
+# MAGIC
 # MAGIC **Step3: Convex Hulls**
-# MAGIC 
+# MAGIC
 # MAGIC As all our core points are defining our clusters, the final step is to find the [Convex Hull](https://en.wikipedia.org/wiki/Convex_hull), that is the smallest shape that include all of our core geo coordinates. There are plenty of literature on that topic, and our approach can easily be used in memory for each cluster returned by our connected components. 
 
 # COMMAND ----------
@@ -40,6 +40,10 @@
 
 # MAGIC %md
 # MAGIC In addition to GEOSCAN jar file that must be installed on classpath, we also need to install its python wrapper. Installed in the future via a pypi repo, one needs to install local files from git whilst our code is not yet published.
+
+# COMMAND ----------
+
+# MAGIC %pip install semver
 
 # COMMAND ----------
 
@@ -96,6 +100,25 @@ nyc
 
 # COMMAND ----------
 
+import folium
+from folium import plugins
+
+points = points_df.sample(0.1).toPandas()[['latitude', 'longitude']]
+nyc = folium.Map(
+    location=[40.75466940037548, -73.98365020751953], 
+    zoom_start=12, 
+    width='80%', 
+    height='100%'
+)
+folium.TileLayer(
+    'Stamen Toner', 
+    attr='Map tiles by Stamen Design, under CC BY 3.0. Data by OpenStreetMap, under ODbL.'
+).add_to(nyc)
+nyc.add_child(plugins.HeatMap(points.to_numpy(), radius=12))
+nyc
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC Our synthetic data set exhibits denser areas around Chelsea, East village and the financial district. By zooming in, we can reveal well defined zones that we aim at programmatically extracting using GEOSCAN
 
@@ -109,7 +132,7 @@ nyc
 
 # MAGIC %md
 # MAGIC ### Model training
-# MAGIC 
+# MAGIC
 # MAGIC We will be using a relatively small `epsilon` value at first to overcome the skews observed earlier. Furthermore, given the amount of data we have in dense areas, having `minPts` too low would result in the entire shape of NYC to be returned as one cluster. How do we tune `epsilon`? Largely domain-specific and with no established strategy, a rule of thumb could be to plot k nearest neighbors, looking at distances and choosing the point of max curvature (more [information](https://towardsdatascience.com/machine-learning-clustering-dbscan-determine-the-optimal-value-for-epsilon-eps-python-example-3100091cfbc)). We leave this to the discretion of the reader. We will try different approaches with different values of `epsilon` and `minPts`, using folium to visualize and refine our clustering strategy
 
 # COMMAND ----------
@@ -206,7 +229,7 @@ display(
 
 # MAGIC %md
 # MAGIC ### Model inference
-# MAGIC 
+# MAGIC
 # MAGIC As the core of GEOSCAN logic relies on the use of H3 polygons, it becomes natural to leverage the same for model inference instead of bringing in extra GIS dependencies for expensive [point in polygons](https://en.wikipedia.org/wiki/Point_in_polygon) queries. Our approach consists in "tiling" our clusters with H3 hexagons that can easily be joined to our original dataframe. The logic is abstracted through the `transform` method of our `Estimator` Spark interface.
 
 # COMMAND ----------
@@ -232,7 +255,7 @@ from folium.plugins import MarkerCluster
 
 nyc_anomalies_points = model.transform(points_df).filter(F.expr('cluster IS NULL')).sample(0.01).toPandas()
 nyc_anomalies = folium.Map([40.75466940037548,-73.98365020751953], zoom_start=12, width='80%', height='100%')
-folium.TileLayer('Stamen Toner').add_to(nyc_anomalies)
+folium.TileLayer('Stamen Toner',attr='Map tiles by Stamen Design, under CC BY 3.0. Data by OpenStreetMap, under ODbL.').add_to(nyc_anomalies)
 folium.GeoJson(geoJson, name="geojson").add_to(nyc_anomalies)
 for _, point in nyc_anomalies_points.iterrows():
   folium.CircleMarker([point.latitude, point.longitude], radius=2, color='red').add_to(nyc_anomalies)
@@ -329,7 +352,7 @@ personalized_geojson = geoJsons.filter(F.col('user') == user).toPandas().iloc[0]
 personalized_data = points_df.filter(F.col('user') == user).toPandas()[['latitude', 'longitude']]
 
 nyc_personalized = folium.Map([40.75466940037548,-73.98365020751953], zoom_start=12, width='80%', height='100%')
-folium.TileLayer('Stamen Toner').add_to(nyc_personalized)
+folium.TileLayer('Stamen Toner',attr='Map tiles by Stamen Design, under CC BY 3.0. Data by OpenStreetMap, under ODbL.').add_to(nyc_personalized)
 nyc_personalized.add_child(plugins.HeatMap(personalized_data.to_numpy(), radius=8))
 folium.GeoJson(personalized_geojson, name="geojson").add_to(nyc_personalized)
 nyc_personalized
@@ -378,7 +401,7 @@ display(personalized_tiles)
 
 # MAGIC %md
 # MAGIC Detecting areas that are the most descriptive for each user is similar to detecting keywords that are more descriptive to each sentence in Natural Language processing use cases. We can use a Term Frequency / Inverse document frequency ([TF-IDF](https://en.wikipedia.org/wiki/Tf%E2%80%93idf)) approach to increase weight of user specific locations whilst reducing weight around common areas. We retrieve the number of unique visitor per H3 tile (`df`) and the total number of visits for each user in those same tiles (`tf`). 
-# MAGIC 
+# MAGIC
 # MAGIC $${tfidf}_{i,j} = {tf}_{i,j}\cdot log(\frac{N}{{df}_{i}})$$
 
 # COMMAND ----------
@@ -455,7 +478,7 @@ personalized_density = personalized_tiles.groupBy('cluster').agg(F.max('tf_idf')
 personalized_geojson = geoJsons.filter(F.col('user') == user).toPandas().cluster.iloc[0]
 data_bins = list(personalized_density.max_tf_idf.quantile([0, 0.25, 0.5, 0.6, 0.7, 0.8, 0.9, 1]))
 nyc_personalized = folium.Map([40.75466940037548,-73.98365020751953], zoom_start=12, width='80%', height='100%')
-folium.TileLayer('Stamen Toner').add_to(nyc_personalized)
+folium.TileLayer('Stamen Toner',attr='Map tiles by Stamen Design, under CC BY 3.0. Data by OpenStreetMap, under ODbL.').add_to(nyc_personalized)
 
 # Color least popular areas by quantile
 folium.Choropleth(
