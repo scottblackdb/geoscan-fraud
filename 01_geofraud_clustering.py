@@ -43,10 +43,6 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install semver
-
-# COMMAND ----------
-
 # MAGIC %run ./config/configure_notebook
 
 # COMMAND ----------
